@@ -134,17 +134,11 @@ The [`examples/`](examples/) directory contains both SVG and PNG output for the 
 
 ![Example EAN-13 output](examples/SAMPLE_9780306406157.png)
 
-## GitHub Pages
+## Use online
 
-Because the root `index.html` is the complete app, publishing it with GitHub Pages is simple:
+You can run the generator directly in your browser using the GitHub Pages version.
 
-1. Open the repository **Settings**.
-2. Open **Pages**.
-3. Under **Build and deployment**, select **Deploy from a branch**.
-4. Select the `main` branch and `/ (root)` folder.
-5. Save.
-
-The hosted page needs the internet only to load the page itself. Barcode generation and export happen locally in the visitor's browser and the ISBN is not submitted to a server by this code.
+Barcode generation and export are performed locally in your browser. The ISBN you enter is not transmitted to a server by this application.
 
 ## Scope and verification
 
