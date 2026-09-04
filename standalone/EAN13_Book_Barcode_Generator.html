@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>EAN-13 Book Barcode Generator</title>
+<style>
+:root{font-family:Arial,Helvetica,sans-serif;color:#151515;background:#f3f3f3}
+*{box-sizing:border-box} body{margin:0;padding:24px}.app{max-width:900px;margin:auto;background:#fff;border:1px solid #ccc;border-radius:10px;padding:22px;box-shadow:0 2px 10px #0001}
+h1{font-size:1.45rem;margin:0 0 4px} .sub{color:#555;margin:0 0 20px}.grid{display:grid;grid-template-columns:190px 1fr;gap:11px 14px;align-items:center}
+label{font-weight:600}.field{display:flex;gap:10px;align-items:center;flex-wrap:wrap}input[type=text]{font:1.15rem ui-monospace,Consolas,monospace;padding:8px 10px;width:min(100%,420px)}
+select,input[type=number]{padding:7px 8px;font:inherit}.small{color:#555;font-size:.93rem}.status{margin-top:14px;padding:10px 12px;border-radius:6px;background:#f4f4f4;min-height:40px}.ok{background:#eef8ee}.bad{background:#fff0f0}.previewWrap{margin-top:16px;border:1px solid #ccc;border-radius:7px;padding:12px;background:#ddd}.previewWrap canvas{width:100%;height:280px;display:block;background:#ddd}.buttons{display:flex;gap:10px;justify-content:flex-end;margin-top:16px;flex-wrap:wrap}button{padding:9px 15px;font:inherit;font-weight:600;cursor:pointer}button:disabled{cursor:not-allowed;opacity:.45}.note{font-size:.9rem;color:#555;margin:12px 0 0;line-height:1.4}.footer{margin-top:18px;font-size:.8rem;color:#777}
+@media(max-width:650px){body{padding:8px}.app{padding:14px}.grid{grid-template-columns:1fr}.previewWrap canvas{height:220px}}
+</style>
+</head>
+<body>
+<div class="app">
+<h1>EAN-13 Book Barcode Generator</h1>
+<p class="sub">Offline, book-focused generator — nothing is uploaded or sent anywhere.</p>
+<div class="grid">
+<label for="ean">ISBN / EAN-13</label>
+<div class="field"><input id="ean" type="text" inputmode="numeric" placeholder="978…" autocomplete="off"><span class="small">12 digits calculates the check digit; 13 validates it.</span></div>
+
+<label for="isbnMode">Validation</label>
+<div class="field"><label style="font-weight:normal"><input id="isbnMode" type="checkbox" checked> Book/ISBN mode — require 978 or 979 prefix</label></div>
+
+<label for="mag">Magnification</label>
+<div class="field"><input id="mag" type="number" min="80" max="200" step="5" value="100"> <span>% &nbsp; (GS1 retail range 80–200%)</span></div>
+
+<label for="dpi">PNG target resolution</label>
+<div class="field"><select id="dpi"><option>300</option><option selected>600</option><option>1200</option></select><span>dpi &nbsp; (600 recommended)</span></div>
+
+<label>Background</label>
+<div class="field"><label style="font-weight:normal"><input type="radio" name="bg" value="white" checked> White</label><label style="font-weight:normal"><input type="radio" name="bg" value="transparent"> Transparent</label></div>
+</div>
+
+<div id="status" class="status">Enter an ISBN-13/EAN-13.</div>
+<div class="previewWrap"><canvas id="preview"></canvas></div>
+<p class="note"><strong>Transparent output:</strong> only use it when the entire barcode area, including the quiet zones, will sit over solid white. A photograph, texture, colour or gradient behind the barcode can reduce scan reliability.</p>
+<p class="note"><strong>Print default:</strong> at 100% the finished symbol is 37.29 × 25.93 mm, including the required quiet zones and human-readable digits. SVG is the preferred master for a book cover because the bars remain vector-sharp.</p>
+<div class="buttons"><button id="svgBtn" disabled>Export SVG…</button><button id="pngBtn" disabled>Export PNG…</button></div>
+<div class="footer">Version 1.0.0 · No five-digit price add-on is generated.</div>
+</div>
+<script>
+'use strict';
+const X_NOM=0.330, BAR_H=22.85, GUARD_H=24.50, TOTAL_H=25.93, HRI_TOP=23.18, HRI_H=2.75;
+const LQ=11,RQ=7,SYMBOL=95,TOTAL=113;
+const L={0:'0001101',1:'0011001',2:'0010011',3:'0111101',4:'0100011',5:'0110001',6:'0101111',7:'0111011',8:'0110111',9:'0001011'};
+const G={0:'0100111',1:'0110011',2:'0011011',3:'0100001',4:'0011101',5:'0111001',6:'0000101',7:'0010001',8:'0001001',9:'0010111'};
+const R={0:'1110010',1:'1100110',2:'1101100',3:'1000010',4:'1011100',5:'1001110',6:'1010000',7:'1000100',8:'1001000',9:'1110100'};
+const PAR={0:'LLLLLL',1:'LLGLGG',2:'LLGGLG',3:'LLGGGL',4:'LGLLGG',5:'LGGLLG',6:'LGGGLL',7:'LGLGLG',8:'LGLGGL',9:'LGGLGL'};
+const $=id=>document.getElementById(id);
+const eanEl=$('ean'), isbnEl=$('isbnMode'), magEl=$('mag'), dpiEl=$('dpi'), statusEl=$('status'), svgBtn=$('svgBtn'), pngBtn=$('pngBtn'), canvas=$('preview');
+let validEAN=null;
+function bgMode(){return document.querySelector('input[name=bg]:checked').value}
+function clean(v){v=v.trim(); if(!v)return ''; if(/[^0-9\s-]/.test(v))throw Error('Use digits only; spaces and hyphens are also accepted.'); return v.replace(/[\s-]/g,'')}
+function checkDigit(s){if(!/^\d{12}$/.test(s))throw Error('Check-digit calculation requires exactly 12 digits.');let sum=0;for(let i=0;i<12;i++)sum+=(+s[i])*(i%2?3:1);return String((10-sum%10)%10)}
+function normalize(v){let d=clean(v); if(![12,13].includes(d.length))throw Error('Enter 12 digits to calculate the check digit, or a complete 13-digit number.'); if(isbnEl.checked&&!/^(978|979)/.test(d))throw Error('Book/ISBN mode requires an ISBN prefix of 978 or 979.'); if(d.length===12){let c=checkDigit(d);return [d+c,'Check digit calculated: '+c]}let c=checkDigit(d.slice(0,12));if(d[12]!==c)throw Error(`Invalid check digit: entered ${d[12]}, expected ${c}.`);return[d,'Check digit valid']}
+function encode(e){let p=PAR[e[0]],left='';for(let i=0;i<6;i++)left+=(p[i]==='L'?L:G)[e[i+1]];let right='';for(let i=7;i<13;i++)right+=R[e[i]];let bits='101'+left+'01010'+right+'101';if(bits.length!==95)throw Error('Internal encoding error');return bits}
+function isGuard(i){return i===0||i===2||i===46||i===48||i===92||i===94}
+function centres(){let a=[LQ/2];for(let i=0;i<6;i++)a.push(LQ+3+3.5+7*i);for(let i=0;i<6;i++)a.push(LQ+3+42+5+3.5+7*i);return a}
+function mag(){let p=+magEl.value;if(!Number.isFinite(p)||p<80||p>200)throw Error('Magnification must be between 80% and 200%.');return p/100}
+function dims(m){let x=X_NOM*m;return {x,w:TOTAL*x,h:TOTAL_H*m}}
+function refresh(){try{let m=mag(),d=dims(m),r=normalize(eanEl.value);validEAN=r[0];statusEl.className='status ok';statusEl.textContent=`✓ ${r[0]} — ${r[1]} · Output ${d.w.toFixed(2)} × ${d.h.toFixed(2)} mm · X-dimension ${d.x.toFixed(3)} mm`;svgBtn.disabled=pngBtn.disabled=false}catch(e){validEAN=null;statusEl.className='status '+(eanEl.value.trim()?'bad':'');statusEl.textContent=eanEl.value.trim()?e.message:'Enter 12 digits to calculate the check digit, or a complete 13-digit number.';svgBtn.disabled=pngBtn.disabled=true}drawPreview()}
+function drawBarcode(ctx,e,m,scale,x0,y0,whitePlate=true){let bits=encode(e),xmm=X_NOM*m,module=xmm*scale,w=TOTAL*xmm*scale,h=TOTAL_H*m*scale;if(whitePlate){ctx.fillStyle='white';ctx.fillRect(x0,y0,w,h)}ctx.fillStyle='black';let sx=x0+LQ*module;for(let i=0;i<bits.length;i++)if(bits[i]==='1'){let bh=(isGuard(i)?GUARD_H:BAR_H)*m*scale;ctx.fillRect(Math.round(sx+i*module),Math.round(y0),Math.ceil(module),Math.round(bh))}ctx.font=`${HRI_H*m*scale}px Arial, Helvetica, sans-serif`;ctx.textAlign='center';ctx.textBaseline='top';ctx.fillStyle='black';let cy=y0+HRI_TOP*m*scale;centres().forEach((c,i)=>ctx.fillText(e[i],x0+c*module,cy))}
+function drawPreview(){let rect=canvas.getBoundingClientRect(),dpr=window.devicePixelRatio||1;canvas.width=Math.max(1,Math.round(rect.width*dpr));canvas.height=Math.max(1,Math.round(rect.height*dpr));let ctx=canvas.getContext('2d');ctx.setTransform(dpr,0,0,dpr,0,0);ctx.clearRect(0,0,rect.width,rect.height);ctx.fillStyle='#ddd';ctx.fillRect(0,0,rect.width,rect.height);if(!validEAN){ctx.fillStyle='#666';ctx.font='14px Arial';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText('Valid barcode preview will appear here',rect.width/2,rect.height/2);return}let m;try{m=mag()}catch{return}let d=dims(m),margin=24,scale=Math.min((rect.width-2*margin)/d.w,(rect.height-2*margin)/d.h),x0=(rect.width-d.w*scale)/2,y0=(rect.height-d.h*scale)/2;drawBarcode(ctx,validEAN,m,scale,x0,y0,true);ctx.strokeStyle='#aaa';ctx.strokeRect(x0,y0,d.w*scale,d.h*scale);if(bgMode()==='transparent'){ctx.fillStyle='#666';ctx.font='11px Arial';ctx.textAlign='left';ctx.textBaseline='top';ctx.fillText('Transparent export',x0+5,y0+5)}}
+function esc(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}
+function svgText(e,m,transparent){let bits=encode(e),x=X_NOM*m,w=TOTAL*x,h=TOTAL_H*m,parts=[`<?xml version="1.0" encoding="UTF-8"?>`,`<svg xmlns="http://www.w3.org/2000/svg" width="${w.toFixed(4)}mm" height="${h.toFixed(4)}mm" viewBox="0 0 ${w.toFixed(6)} ${h.toFixed(6)}" shape-rendering="crispEdges">`,`<title>EAN-13 ${esc(e)}</title>`];if(!transparent)parts.push(`<rect x="0" y="0" width="${w.toFixed(6)}" height="${h.toFixed(6)}" fill="#fff"/>`);let sx=LQ*x;for(let i=0;i<bits.length;i++)if(bits[i]==='1'){let bh=(isGuard(i)?GUARD_H:BAR_H)*m;parts.push(`<rect x="${(sx+i*x).toFixed(6)}" y="0" width="${x.toFixed(6)}" height="${bh.toFixed(6)}" fill="#000"/>`)}let fs=HRI_H*m,y=(HRI_TOP*m+fs*.88);centres().forEach((c,i)=>parts.push(`<text x="${(c*x).toFixed(6)}" y="${y.toFixed(6)}" font-family="Arial, Helvetica, sans-serif" font-size="${fs.toFixed(6)}" text-anchor="middle" fill="#000" shape-rendering="geometricPrecision">${e[i]}</text>`));parts.push('</svg>');return parts.join('\n')+'\n'}
+function downloadBlob(blob,name){let a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},1000)}
+function confirmTransparent(){return bgMode()!=='transparent'||confirm('A transparent EAN-13 is safe only if the final cover beneath the entire barcode area is solid white. A coloured, textured or photographic background can destroy the quiet zones and contrast.\n\nContinue with transparent export?')}
+svgBtn.addEventListener('click',()=>{if(!validEAN||!confirmTransparent())return;let m=mag(),pct=Math.round(m*100),svg=svgText(validEAN,m,bgMode()==='transparent');downloadBlob(new Blob([svg],{type:'image/svg+xml;charset=utf-8'}),`ISBN_${validEAN}_EAN13_${pct}pct.svg`)})
+pngBtn.addEventListener('click',()=>{if(!validEAN||!confirmTransparent())return;let m=mag(),xmm=X_NOM*m,target=+dpiEl.value,modulePx=Math.max(1,Math.round(xmm*target/25.4)),ppm=modulePx/xmm*1000,effDpi=ppm*.0254,w=TOTAL*modulePx,h=Math.round(TOTAL_H*m*ppm/1000),out=document.createElement('canvas');out.width=w;out.height=h;let ctx=out.getContext('2d');ctx.imageSmoothingEnabled=false;if(bgMode()==='white'){ctx.fillStyle='white';ctx.fillRect(0,0,w,h)}let bits=encode(validEAN),barH=Math.round(BAR_H*m*ppm/1000),guardH=Math.round(GUARD_H*m*ppm/1000),sx=LQ*modulePx;ctx.fillStyle='black';for(let i=0;i<bits.length;i++)if(bits[i]==='1')ctx.fillRect(sx+i*modulePx,0,modulePx,isGuard(i)?guardH:barH);let fs=HRI_H*m*ppm/1000;ctx.font=`${fs}px Arial, Helvetica, sans-serif`;ctx.textAlign='center';ctx.textBaseline='top';ctx.fillStyle='black';let y=HRI_TOP*m*ppm/1000;centres().forEach((c,i)=>ctx.fillText(validEAN[i],c*modulePx,y));out.toBlob(blob=>{if(!blob)return alert('PNG creation failed in this browser.');downloadBlob(blob,`ISBN_${validEAN}_EAN13_${Math.round(m*100)}pct_${Math.round(effDpi)}dpi.png`)},'image/png')})
+eanEl.addEventListener('input',refresh);isbnEl.addEventListener('change',refresh);magEl.addEventListener('input',refresh);dpiEl.addEventListener('change',refresh);document.querySelectorAll('input[name=bg]').forEach(r=>r.addEventListener('change',refresh));window.addEventListener('resize',drawPreview);
+// Internal startup checks.
+console.assert(checkDigit('400638133393')==='1');console.assert(checkDigit('978030640615')==='7');console.assert(encode('9780306406157').length===95);
+refresh();
+</script>
+</body>
+</html>
