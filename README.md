@@ -136,9 +136,13 @@ The [`examples/`](examples/) directory contains both SVG and PNG output for the 
 
 ## Use online
 
-You can run the generator directly in your browser using the GitHub Pages version.
+You can run the generator directly in your browser:
 
-Barcode generation and export are performed locally in your browser. The ISBN you enter is not transmitted to a server by this application.
+**[Open the EAN-13 Book Barcode Generator](https://aussiesloth.github.io/ean13-book-barcode-generator/)**
+
+Barcode generation and export are performed locally in your browser. The ISBN/EAN-13 number you enter is not uploaded or transmitted to a server by this application.
+
+For offline use, download `standalone/EAN13_Book_Barcode_Generator.html` and open it in any modern browser.
 
 ## Scope and verification
 
